@@ -1,12 +1,415 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rubik AI Web Demo</title>
+  <meta charset="UTF-8">
+  <title>Rubik AI Web Demo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --bg-dark: #0f172a;
+      --panel-bg: rgba(30, 41, 59, 0.7);
+      --text: #f8fafc;
+      --border: rgba(255, 255, 255, 0.1);
+    }
+    body, html {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background-color: var(--bg-dark);
+      font-family: 'Inter', sans-serif;
+      color: var(--text);
+      overflow: hidden;
+    }
+    #canvas-container {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    }
+    /* Glassmorphism UI */
+    #control-panel {
+      position: absolute;
+      bottom: 40px; right: 40px;
+      width: 340px;
+      background: var(--panel-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      z-index: 10;
+    }
+    h1 {
+      margin: 0; font-size: 20px; font-weight: 800;
+      background: linear-gradient(to right, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .btn {
+      background: var(--border);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex; justify-content: center; align-items: center; gap: 8px;
+    }
+    .btn:hover:not(:disabled) {
+      background: rgba(255,255,255,0.15);
+      transform: translateY(-1px);
+    }
+    .btn-primary {
+      background: var(--primary);
+      border-color: var(--primary-hover);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+      box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+    }
+    .btn:disabled {
+      opacity: 0.5; cursor: not-allowed;
+    }
+    select {
+      background: rgba(0,0,0,0.3);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 12px;
+      border-radius: 12px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      outline: none;
+    }
+    select option { background: var(--bg-dark); }
+    .stats {
+      background: rgba(0,0,0,0.3);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex; flex-direction: column; gap: 8px;
+      font-size: 13px; color: #cbd5e1;
+    }
+    .stat-row {
+      display: flex; justify-content: space-between;
+    }
+    .stat-val { font-weight: 600; color: #fff; }
+    
+    #loading-overlay {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(15, 23, 42, 0.8);
+      display: none; justify-content: center; align-items: center;
+      z-index: 20; backdrop-filter: blur(4px);
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 4px solid rgba(255,255,255,0.1);
+      border-left-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+  </style>
 </head>
 <body>
-    <h1>Rubik AI Web Demo</h1>
-    <p>API is running!</p>
+  <div id="canvas-container"></div>
+  
+  <div id="loading-overlay">
+    <div style="text-align:center;">
+      <div class="spinner" style="margin: 0 auto 16px;"></div>
+      <div style="font-weight: 600; letter-spacing: 1px;">AI ĐANG GIẢI...</div>
+    </div>
+  </div>
+
+  <div id="control-panel">
+    <h1>Rubik AI Solver</h1>
+    
+    <div style="display:flex; gap: 10px;">
+      <button class="btn" id="btn-scramble" style="flex:1;">🔀 Xáo trộn</button>
+    </div>
+
+    <select id="sel-heuristic">
+      <option value="v2">Heuristic v2 (Pattern DB) ⚡</option>
+      <option value="v1">Heuristic v1 (Thô - Chậm)</option>
+    </select>
+    
+    <button class="btn btn-primary" id="btn-solve">✨ Giải Rubik</button>
+    
+    <div class="stats">
+      <div class="stat-row"><span>Độ dài:</span> <span class="stat-val" id="stat-len">-</span></div>
+      <div class="stat-row"><span>Node mở:</span> <span class="stat-val" id="stat-node">-</span></div>
+      <div class="stat-row"><span>Thời gian:</span> <span class="stat-val" id="stat-time">-</span></div>
+    </div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.js",
+        "three/addons/": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // --- BẢN ĐỒ MÀU VÀ TOẠ ĐỘ ---
+    const COLORS = {
+      R: 0xb71234, // Đỏ (Right) x+
+      L: 0xff5800, // Cam (Left) x-
+      U: 0xffffff, // Trắng (Up) y+
+      D: 0xffd500, // Vàng (Down) y-
+      F: 0x009b48, // Xanh lá (Front) z+
+      B: 0x0046ad, // Xanh dương (Back) z-
+      I: 0x111111  // Đen (Inner)
+    };
+
+    // move string -> trục, hướng xoay, toạ độ mặt
+    const MOVE_MAP = {
+      "U": { axis: 'y', dir: -1, layer: 'y', val: 1 },
+      "U'": { axis: 'y', dir: 1, layer: 'y', val: 1 },
+      "U2": { axis: 'y', dir: -2, layer: 'y', val: 1 },
+      "D": { axis: 'y', dir: 1, layer: 'y', val: -1 },
+      "D'": { axis: 'y', dir: -1, layer: 'y', val: -1 },
+      "D2": { axis: 'y', dir: 2, layer: 'y', val: -1 },
+      "R": { axis: 'x', dir: -1, layer: 'x', val: 1 },
+      "R'": { axis: 'x', dir: 1, layer: 'x', val: 1 },
+      "R2": { axis: 'x', dir: -2, layer: 'x', val: 1 },
+      "L": { axis: 'x', dir: 1, layer: 'x', val: -1 },
+      "L'": { axis: 'x', dir: -1, layer: 'x', val: -1 },
+      "L2": { axis: 'x', dir: 2, layer: 'x', val: -1 },
+      "F": { axis: 'z', dir: -1, layer: 'z', val: 1 },
+      "F'": { axis: 'z', dir: 1, layer: 'z', val: 1 },
+      "F2": { axis: 'z', dir: -2, layer: 'z', val: 1 },
+      "B": { axis: 'z', dir: 1, layer: 'z', val: -1 },
+      "B'": { axis: 'z', dir: -1, layer: 'z', val: -1 },
+      "B2": { axis: 'z', dir: 2, layer: 'z', val: -1 }
+    };
+
+    // --- SETUP SCENE ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x0f172a, 10, 30);
+    
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+    camera.position.set(5, 5, 7);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // Ánh sáng
+    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(5, 10, 7);
+    scene.add(dirLight);
+
+    // --- TẠO 27 KHỐI (CUBIES) ---
+    const cubies = [];
+    const spacing = 1.05;
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+
+    function createMaterial(color) {
+      return new THREE.MeshPhongMaterial({ color: color, shininess: 60, rounded: true });
+    }
+
+    for(let x = -1; x <= 1; x++) {
+      for(let y = -1; y <= 1; y++) {
+        for(let z = -1; z <= 1; z++) {
+          const mats = [
+            createMaterial(x === 1 ? COLORS.R : COLORS.I), // 0: x+
+            createMaterial(x === -1 ? COLORS.L : COLORS.I),// 1: x-
+            createMaterial(y === 1 ? COLORS.U : COLORS.I), // 2: y+
+            createMaterial(y === -1 ? COLORS.D : COLORS.I),// 3: y-
+            createMaterial(z === 1 ? COLORS.F : COLORS.I), // 4: z+
+            createMaterial(z === -1 ? COLORS.B : COLORS.I),// 5: z-
+          ];
+          const mesh = new THREE.Mesh(geometry, mats);
+          
+          // Vẽ viền đen cho khối (giống khối rubik thực)
+          const edges = new THREE.EdgesGeometry(geometry);
+          const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 }));
+          mesh.add(line);
+
+          mesh.position.set(x * spacing, y * spacing, z * spacing);
+          
+          // Lưu thuộc tính toạ độ ảo (logic coord) để dễ xoay
+          mesh.userData = { lx: x, ly: y, lz: z };
+          
+          scene.add(mesh);
+          cubies.push(mesh);
+        }
+      }
+    }
+
+    // --- LOGIC ANIMATION XOAY MẶT ---
+    let isAnimating = false;
+    let animationQueue = [];
+    
+    // Easing cực êm
+    function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+
+    function animateMove(moveStr, durationMs, callback) {
+      const cfg = MOVE_MAP[moveStr];
+      if(!cfg) return callback();
+
+      // Gom 9 viên thuộc layer
+      const targetCubies = cubies.filter(c => Math.round(c.userData[cfg.layer]) === cfg.val);
+      if(targetCubies.length === 0) return callback();
+
+      const pivot = new THREE.Group();
+      scene.add(pivot);
+      
+      // Chuyển 9 viên vào pivot group
+      targetCubies.forEach(c => {
+        // Cập nhật matrixworld để giữ nguyên toạ độ khi đổi parent
+        c.updateMatrixWorld();
+        THREE.SceneUtils && THREE.SceneUtils.attach ? 
+           THREE.SceneUtils.attach(c, scene, pivot) : pivot.attach(c);
+      });
+
+      const targetAngle = cfg.dir * (Math.PI / 2);
+      const startAngle = 0;
+      let startTime = null;
+
+      function frame(time) {
+        if(!startTime) startTime = time;
+        const elapsed = time - startTime;
+        let progress = Math.min(elapsed / durationMs, 1);
+        let eased = easeInOutCubic(progress);
+
+        pivot.rotation[cfg.axis] = startAngle + (targetAngle - startAngle) * eased;
+
+        if (progress < 1) {
+          requestAnimationFrame(frame);
+        } else {
+          pivot.updateMatrixWorld();
+          // Tháo 9 viên ra trả lại scene và cập nhật userData tọa độ mới
+          targetCubies.forEach(c => {
+            scene.attach(c);
+            
+            // Tính lại toạ độ logic (làm tròn) để nhận diện mặt cho lần xoay kế
+            c.userData.lx = Math.round(c.position.x / spacing);
+            c.userData.ly = Math.round(c.position.y / spacing);
+            c.userData.lz = Math.round(c.position.z / spacing);
+          });
+          scene.remove(pivot);
+          callback();
+        }
+      }
+      requestAnimationFrame(frame);
+    }
+
+    function playQueue(durationMs, onComplete) {
+      if (animationQueue.length === 0) {
+        if(onComplete) onComplete();
+        return;
+      }
+      const move = animationQueue.shift();
+      animateMove(move, durationMs, () => playQueue(durationMs, onComplete));
+    }
+
+    // --- RENDER LOOP ---
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // --- UI TƯƠNG TÁC GỌI API ---
+    let currentState = null; // Lưu state được scramble
+
+    const btnScramble = document.getElementById('btn-scramble');
+    const btnSolve = document.getElementById('btn-solve');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    
+    function setUIDisabled(disabled) {
+      btnScramble.disabled = disabled;
+      btnSolve.disabled = disabled;
+      document.getElementById('sel-heuristic').disabled = disabled;
+    }
+
+    btnScramble.addEventListener('click', async () => {
+      setUIDisabled(true);
+      try {
+        const res = await fetch('http://127.0.0.1:8000/scramble?n=10');
+        const data = await res.json();
+        currentState = data.state;
+        
+        // Đẩy moves vào queue và phát nhanh (150ms/bước)
+        animationQueue = [...data.moves];
+        
+        // Reset stats
+        document.getElementById('stat-len').innerText = "-";
+        document.getElementById('stat-node').innerText = "-";
+        document.getElementById('stat-time').innerText = "-";
+
+        playQueue(150, () => { setUIDisabled(false); });
+      } catch (err) {
+        alert("Lỗi gọi API Scramble! " + err);
+        setUIDisabled(false);
+      }
+    });
+
+    btnSolve.addEventListener('click', async () => {
+      if(!currentState) return alert("Vui lòng xáo trộn khối Rubik trước!");
+      
+      setUIDisabled(true);
+      loadingOverlay.style.display = 'flex';
+      
+      const heuristic = document.getElementById('sel-heuristic').value;
+      
+      try {
+        const res = await fetch('http://127.0.0.1:8000/solve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: currentState, heuristic: heuristic })
+        });
+        const data = await res.json();
+        loadingOverlay.style.display = 'none';
+
+        if (data.moves === null) {
+          alert("Lỗi TIMEOUT: Không gian tìm kiếm quá lớn (vượt quá 300,000 node). Heuristic thô không đủ sức giải!");
+          setUIDisabled(false);
+          return;
+        }
+
+        // Cập nhật bảng
+        document.getElementById('stat-len').innerText = data.moves.length + " bước";
+        document.getElementById('stat-node').innerText = data.nodes_opened.toLocaleString();
+        document.getElementById('stat-time').innerText = data.time_ms + " ms";
+
+        // Trình diễn lời giải (chậm hơn chút để dễ nhìn, 350ms/bước)
+        animationQueue = [...data.moves];
+        playQueue(350, () => {
+          currentState = null; // Giải xong thì xoá state cũ
+          setUIDisabled(false);
+        });
+
+      } catch (err) {
+        loadingOverlay.style.display = 'none';
+        alert("Lỗi gọi API Solve! " + err);
+        setUIDisabled(false);
+      }
+    });
+  </script>
 </body>
 </html>

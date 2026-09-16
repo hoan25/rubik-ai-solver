@@ -79,18 +79,14 @@ def solve_with_heuristic(scrambled_state: State, heuristic_func, max_moves: int 
 
 
 def run_benchmark():
-    print("=" * 85)
-    print("      BÁO CÁO BENCHMARK SO SÁNH HEURISTIC V1 (THÔ) VS HEURISTIC V2 (CORNER PDB)")
-    print("=" * 85)
-
     # Nạp trước PDB vào bộ nhớ
     heuristic_module.get_heuristic_v2(GOAL_STATE)
 
-    scramble_depths = [5, 8, 10]
-    num_samples = 2
+    scramble_depths = [5, 10, 15]
+    num_samples = 5
 
-    print(f"\n{'Độ sâu':<8} | {'Seed':<6} | {'Phiên bản':<16} | {'Lời giải':<12} | {'Node đã mở':<16} | {'Thời gian (s)':<12}")
-    print("-" * 85)
+    print("| Độ sâu | Seed | Xáo trộn | Lời giải v1 | Node mở v1 | T.gian v1 (s) | Lời giải v2 | Node mở v2 | T.gian v2 (s) | Node giảm (lần) | T.gian giảm (lần) |")
+    print("| :---: | :---: | :---: | :---: | ---: | ---: | :---: | ---: | ---: | :---: | :---: |")
 
     for depth in scramble_depths:
         for sample_idx in range(num_samples):
@@ -105,14 +101,22 @@ def run_benchmark():
             sol_v2, nodes_v2, time_v2 = solve_with_heuristic(state, heuristic_module.get_heuristic_v2)
             len_v2 = f"{len(sol_v2)} bước" if sol_v2 else ("TIMEOUT" if nodes_v2 >= 300_000 else "N/A")
 
-            print(f"{depth:<8} | {seed:<6} | {'v1 (Thô)':<16} | {len_v1:<12} | {nodes_v1:<16,} | {time_v1:<12.4f}")
-            print(f"{'':<8} | {'':<6} | {'v2 (Corner PDB)':<16} | {len_v2:<12} | {nodes_v2:<16,} | {time_v2:<12.4f}")
-            print("-" * 85)
+            if nodes_v1 >= 300_000 and nodes_v2 < 300_000 and nodes_v2 > 0:
+                nodes_ratio = f"> {(300_000 / nodes_v2):.0f}x"
+                time_ratio = f"> {(time_v1 / max(time_v2, 0.0001)):.1f}x"
+            elif nodes_v1 < 300_000 and nodes_v2 < 300_000 and nodes_v2 > 0:
+                nodes_ratio = f"{(nodes_v1 / nodes_v2):.1f}x"
+                time_ratio = f"{(time_v1 / max(time_v2, 0.0001)):.1f}x"
+            else:
+                nodes_ratio = "N/A"
+                time_ratio = "N/A"
 
-    print("\n" + "=" * 85)
-    print("HOÀN TẤT BENCHMARK!")
-    print("=" * 85)
+            str_nodes_v1 = f"{nodes_v1:,}" if nodes_v1 < 300_000 else "> 300,000"
+            str_nodes_v2 = f"{nodes_v2:,}" if nodes_v2 < 300_000 else "> 300,000"
+            str_time_v1 = f"{time_v1:.4f}"
+            str_time_v2 = f"{time_v2:.4f}"
 
+            print(f"| {depth} | {seed} | {depth} bước | {len_v1} | {str_nodes_v1} | {str_time_v1} | {len_v2} | {str_nodes_v2} | {str_time_v2} | {nodes_ratio} | {time_ratio} |")
 
 if __name__ == "__main__":
     run_benchmark()
