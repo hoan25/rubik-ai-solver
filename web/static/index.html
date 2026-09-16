@@ -98,15 +98,23 @@
     }
     .stat-val { font-weight: 600; color: #fff; }
     
-    #loading-overlay {
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(15, 23, 42, 0.8);
-      display: none; justify-content: center; align-items: center;
-      z-index: 20; backdrop-filter: blur(4px);
+    #status-banner {
+      position: absolute;
+      top: 24px; left: 50%;
+      transform: translateX(-50%);
+      background: var(--panel-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 24px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+      z-index: 20;
+      min-width: 280px;
     }
     .spinner {
-      width: 40px; height: 40px;
-      border: 4px solid rgba(255,255,255,0.1);
+      width: 24px; height: 24px;
+      border: 3px solid rgba(255,255,255,0.1);
       border-left-color: var(--primary);
       border-radius: 50%;
       animation: spin 1s linear infinite;
@@ -117,10 +125,15 @@
 <body>
   <div id="canvas-container"></div>
   
-  <div id="loading-overlay">
-    <div style="text-align:center;">
-      <div class="spinner" style="margin: 0 auto 16px;"></div>
-      <div style="font-weight: 600; letter-spacing: 1px;">AI ĐANG GIẢI...</div>
+  <div id="status-banner" style="display: none;">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div id="spinner-container" style="display: none;"><div class="spinner"></div></div>
+        <div id="status-text" style="font-weight: 600; letter-spacing: 1px; font-size: 14px;">AI ĐANG TÍNH TOÁN LỜI GIẢI...</div>
+      </div>
+      <div id="progress-container" style="display: none; width: 100%; background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden; margin-top: 4px;">
+        <div id="progress-bar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.2s ease-out;"></div>
+      </div>
     </div>
   </div>
 
@@ -148,8 +161,8 @@
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.js",
-        "three/addons/": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/examples/jsm/"
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
       }
     }
   </script>
@@ -171,24 +184,24 @@
 
     // move string -> trục, hướng xoay, toạ độ mặt
     const MOVE_MAP = {
-      "U": { axis: 'y', dir: -1, layer: 'y', val: 1 },
-      "U'": { axis: 'y', dir: 1, layer: 'y', val: 1 },
-      "U2": { axis: 'y', dir: -2, layer: 'y', val: 1 },
-      "D": { axis: 'y', dir: 1, layer: 'y', val: -1 },
-      "D'": { axis: 'y', dir: -1, layer: 'y', val: -1 },
-      "D2": { axis: 'y', dir: 2, layer: 'y', val: -1 },
-      "R": { axis: 'x', dir: -1, layer: 'x', val: 1 },
-      "R'": { axis: 'x', dir: 1, layer: 'x', val: 1 },
-      "R2": { axis: 'x', dir: -2, layer: 'x', val: 1 },
-      "L": { axis: 'x', dir: 1, layer: 'x', val: -1 },
-      "L'": { axis: 'x', dir: -1, layer: 'x', val: -1 },
-      "L2": { axis: 'x', dir: 2, layer: 'x', val: -1 },
-      "F": { axis: 'z', dir: -1, layer: 'z', val: 1 },
-      "F'": { axis: 'z', dir: 1, layer: 'z', val: 1 },
-      "F2": { axis: 'z', dir: -2, layer: 'z', val: 1 },
-      "B": { axis: 'z', dir: 1, layer: 'z', val: -1 },
-      "B'": { axis: 'z', dir: -1, layer: 'z', val: -1 },
-      "B2": { axis: 'z', dir: 2, layer: 'z', val: -1 }
+      "U": { axis: 'y', dir: -1, layer: 'ly', val: 1 },
+      "U'": { axis: 'y', dir: 1, layer: 'ly', val: 1 },
+      "U2": { axis: 'y', dir: -2, layer: 'ly', val: 1 },
+      "D": { axis: 'y', dir: 1, layer: 'ly', val: -1 },
+      "D'": { axis: 'y', dir: -1, layer: 'ly', val: -1 },
+      "D2": { axis: 'y', dir: 2, layer: 'ly', val: -1 },
+      "R": { axis: 'x', dir: -1, layer: 'lx', val: 1 },
+      "R'": { axis: 'x', dir: 1, layer: 'lx', val: 1 },
+      "R2": { axis: 'x', dir: -2, layer: 'lx', val: 1 },
+      "L": { axis: 'x', dir: 1, layer: 'lx', val: -1 },
+      "L'": { axis: 'x', dir: -1, layer: 'lx', val: -1 },
+      "L2": { axis: 'x', dir: 2, layer: 'lx', val: -1 },
+      "F": { axis: 'z', dir: -1, layer: 'lz', val: 1 },
+      "F'": { axis: 'z', dir: 1, layer: 'lz', val: 1 },
+      "F2": { axis: 'z', dir: -2, layer: 'lz', val: 1 },
+      "B": { axis: 'z', dir: 1, layer: 'lz', val: -1 },
+      "B'": { axis: 'z', dir: -1, layer: 'lz', val: -1 },
+      "B2": { axis: 'z', dir: 2, layer: 'lz', val: -1 }
     };
 
     // --- SETUP SCENE ---
@@ -252,72 +265,86 @@
         }
       }
     }
+    
+    console.log("Cube added:", scene.children.length);
 
     // --- LOGIC ANIMATION XOAY MẶT ---
-    let isAnimating = false;
-    let animationQueue = [];
     
     // Easing cực êm
     function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
 
-    function animateMove(moveStr, durationMs, callback) {
-      const cfg = MOVE_MAP[moveStr];
-      if(!cfg) return callback();
+    function animateMoveAsync(moveStr, durationMs) {
+      return new Promise(resolve => {
+        const cfg = MOVE_MAP[moveStr];
+        if(!cfg) return resolve();
 
-      // Gom 9 viên thuộc layer
-      const targetCubies = cubies.filter(c => Math.round(c.userData[cfg.layer]) === cfg.val);
-      if(targetCubies.length === 0) return callback();
+        // Gom 9 viên thuộc layer
+        const targetCubies = cubies.filter(c => Math.round(c.userData[cfg.layer]) === cfg.val);
+        if(targetCubies.length === 0) return resolve();
 
-      const pivot = new THREE.Group();
-      scene.add(pivot);
-      
-      // Chuyển 9 viên vào pivot group
-      targetCubies.forEach(c => {
-        // Cập nhật matrixworld để giữ nguyên toạ độ khi đổi parent
-        c.updateMatrixWorld();
-        THREE.SceneUtils && THREE.SceneUtils.attach ? 
-           THREE.SceneUtils.attach(c, scene, pivot) : pivot.attach(c);
-      });
+        const pivot = new THREE.Group();
+        scene.add(pivot);
+        
+        targetCubies.forEach(c => {
+          c.updateMatrixWorld();
+          THREE.SceneUtils && THREE.SceneUtils.attach ? 
+             THREE.SceneUtils.attach(c, scene, pivot) : pivot.attach(c);
+        });
 
-      const targetAngle = cfg.dir * (Math.PI / 2);
-      const startAngle = 0;
-      let startTime = null;
+        const targetAngle = cfg.dir * (Math.PI / 2);
+        const startAngle = 0;
+        let startTime = null;
 
-      function frame(time) {
-        if(!startTime) startTime = time;
-        const elapsed = time - startTime;
-        let progress = Math.min(elapsed / durationMs, 1);
-        let eased = easeInOutCubic(progress);
+        function frame(time) {
+          if(!startTime) startTime = time;
+          const elapsed = time - startTime;
+          let progress = Math.min(elapsed / durationMs, 1);
+          let eased = easeInOutCubic(progress);
 
-        pivot.rotation[cfg.axis] = startAngle + (targetAngle - startAngle) * eased;
+          pivot.rotation[cfg.axis] = startAngle + (targetAngle - startAngle) * eased;
 
-        if (progress < 1) {
-          requestAnimationFrame(frame);
-        } else {
-          pivot.updateMatrixWorld();
-          // Tháo 9 viên ra trả lại scene và cập nhật userData tọa độ mới
-          targetCubies.forEach(c => {
-            scene.attach(c);
-            
-            // Tính lại toạ độ logic (làm tròn) để nhận diện mặt cho lần xoay kế
-            c.userData.lx = Math.round(c.position.x / spacing);
-            c.userData.ly = Math.round(c.position.y / spacing);
-            c.userData.lz = Math.round(c.position.z / spacing);
-          });
-          scene.remove(pivot);
-          callback();
+          if (progress < 1) {
+            requestAnimationFrame(frame);
+          } else {
+            pivot.updateMatrixWorld();
+            targetCubies.forEach(c => {
+              scene.attach(c);
+              c.userData.lx = Math.round(c.position.x / spacing);
+              c.userData.ly = Math.round(c.position.y / spacing);
+              c.userData.lz = Math.round(c.position.z / spacing);
+            });
+            scene.remove(pivot);
+            resolve();
+          }
         }
-      }
-      requestAnimationFrame(frame);
+        requestAnimationFrame(frame);
+      });
     }
 
-    function playQueue(durationMs, onComplete) {
-      if (animationQueue.length === 0) {
-        if(onComplete) onComplete();
-        return;
+    async function playMovesSequentially(moves, durationMs, statusLabel = null) {
+      const pContainer = document.getElementById('progress-container');
+      const pBar = document.getElementById('progress-bar');
+      const sContainer = document.getElementById('spinner-container');
+      
+      if (statusLabel) {
+        pContainer.style.display = 'block';
+        sContainer.style.display = 'none';
       }
-      const move = animationQueue.shift();
-      animateMove(move, durationMs, () => playQueue(durationMs, onComplete));
+      
+      for(let i = 0; i < moves.length; i++) {
+        if (statusLabel) {
+          statusLabel.innerText = `Bước ${i+1}/${moves.length}: ${moves[i]}`;
+          pBar.style.width = `${((i+1) / moves.length) * 100}%`;
+        }
+        await animateMoveAsync(moves[i], durationMs);
+        await new Promise(r => setTimeout(r, 100)); // Khoảng nghỉ 100ms
+      }
+      
+      if (statusLabel) {
+        setTimeout(() => {
+          document.getElementById('status-banner').style.display = 'none';
+        }, 500); // Ẩn banner sau khi hoàn thành 0.5s
+      }
     }
 
     // --- RENDER LOOP ---
@@ -339,7 +366,10 @@
 
     const btnScramble = document.getElementById('btn-scramble');
     const btnSolve = document.getElementById('btn-solve');
-    const loadingOverlay = document.getElementById('loading-overlay');
+    const banner = document.getElementById('status-banner');
+    const statusText = document.getElementById('status-text');
+    const sContainer = document.getElementById('spinner-container');
+    const pContainer = document.getElementById('progress-container');
     
     function setUIDisabled(disabled) {
       btnScramble.disabled = disabled;
@@ -349,21 +379,26 @@
 
     btnScramble.addEventListener('click', async () => {
       setUIDisabled(true);
+      
+      banner.style.display = 'block';
+      sContainer.style.display = 'block';
+      pContainer.style.display = 'none';
+      statusText.innerText = "ĐANG TẠO XÁO TRỘN...";
+
       try {
         const res = await fetch('http://127.0.0.1:8000/scramble?n=10');
         const data = await res.json();
         currentState = data.state;
-        
-        // Đẩy moves vào queue và phát nhanh (150ms/bước)
-        animationQueue = [...data.moves];
         
         // Reset stats
         document.getElementById('stat-len').innerText = "-";
         document.getElementById('stat-node').innerText = "-";
         document.getElementById('stat-time').innerText = "-";
 
-        playQueue(150, () => { setUIDisabled(false); });
+        await playMovesSequentially(data.moves, 150, statusText);
+        setUIDisabled(false);
       } catch (err) {
+        banner.style.display = 'none';
         alert("Lỗi gọi API Scramble! " + err);
         setUIDisabled(false);
       }
@@ -373,7 +408,10 @@
       if(!currentState) return alert("Vui lòng xáo trộn khối Rubik trước!");
       
       setUIDisabled(true);
-      loadingOverlay.style.display = 'flex';
+      banner.style.display = 'block';
+      sContainer.style.display = 'block'; // Hiển thị spinner khi chờ server tính
+      pContainer.style.display = 'none';
+      statusText.innerText = "AI ĐANG TÍNH TOÁN LỜI GIẢI...";
       
       const heuristic = document.getElementById('sel-heuristic').value;
       
@@ -384,9 +422,9 @@
           body: JSON.stringify({ state: currentState, heuristic: heuristic })
         });
         const data = await res.json();
-        loadingOverlay.style.display = 'none';
 
         if (data.moves === null) {
+          banner.style.display = 'none';
           alert("Lỗi TIMEOUT: Không gian tìm kiếm quá lớn (vượt quá 300,000 node). Heuristic thô không đủ sức giải!");
           setUIDisabled(false);
           return;
@@ -397,15 +435,14 @@
         document.getElementById('stat-node').innerText = data.nodes_opened.toLocaleString();
         document.getElementById('stat-time').innerText = data.time_ms + " ms";
 
-        // Trình diễn lời giải (chậm hơn chút để dễ nhìn, 350ms/bước)
-        animationQueue = [...data.moves];
-        playQueue(350, () => {
-          currentState = null; // Giải xong thì xoá state cũ
-          setUIDisabled(false);
-        });
+        // Trình diễn lời giải (progress bar sẽ tự kích hoạt)
+        await playMovesSequentially(data.moves, 350, statusText);
+        
+        currentState = null; // Giải xong thì xoá state cũ
+        setUIDisabled(false);
 
       } catch (err) {
-        loadingOverlay.style.display = 'none';
+        banner.style.display = 'none';
         alert("Lỗi gọi API Solve! " + err);
         setUIDisabled(false);
       }
