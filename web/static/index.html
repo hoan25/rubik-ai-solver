@@ -436,9 +436,53 @@
     }
     animate();
 
-    // --- UI TƯƠNG TÁC GỌI API ---
-    let currentState = null; // Lưu state được scramble
+    // --- STATE MANAGEMENT ---
+    let currentCubeState = null; // Trạng thái logic từ backend
+    let currentScrambleMoves = []; // Các bước để render tức thì
+    let isScrambled = false;
 
+    function applyMoveInstant(moveStr) {
+      const cfg = MOVE_MAP[moveStr];
+      if (!cfg) return;
+      const targetCubies = cubies.filter(c => Math.round(c.userData[cfg.layer]) === cfg.val);
+      if (targetCubies.length === 0) return;
+      
+      const pivot = new THREE.Group();
+      scene.add(pivot);
+      targetCubies.forEach(c => {
+        c.updateMatrixWorld();
+        THREE.SceneUtils && THREE.SceneUtils.attach ? THREE.SceneUtils.attach(c, scene, pivot) : pivot.attach(c);
+      });
+      
+      pivot.rotation[cfg.axis] = cfg.dir * (Math.PI / 2);
+      pivot.updateMatrixWorld();
+      
+      targetCubies.forEach(c => {
+        scene.attach(c);
+        c.userData.lx = Math.round(c.position.x / spacing);
+        c.userData.ly = Math.round(c.position.y / spacing);
+        c.userData.lz = Math.round(c.position.z / spacing);
+      });
+      scene.remove(pivot);
+    }
+
+    function renderCubeFromState() {
+      // 1. Luôn Reset về Goal
+      cubies.forEach(c => {
+        c.position.set(c.userData.initX, c.userData.initY, c.userData.initZ);
+        c.rotation.set(0, 0, 0);
+        c.updateMatrixWorld();
+        c.userData.lx = Math.round(c.userData.initX / spacing);
+        c.userData.ly = Math.round(c.userData.initY / spacing);
+        c.userData.lz = Math.round(c.userData.initZ / spacing);
+      });
+      // 2. Apply trạng thái nếu có
+      if (isScrambled && currentScrambleMoves.length > 0) {
+        currentScrambleMoves.forEach(m => applyMoveInstant(m));
+      }
+    }
+
+    // --- UI TƯƠNG TÁC GỌI API ---
     const btnScramble = document.getElementById('btn-scramble');
     const btnSolve = document.getElementById('btn-solve');
     const banner = document.getElementById('status-banner');
@@ -480,14 +524,24 @@
         const nMoves = parseInt(inpScrambleMoves.value) || 10;
         const res = await fetch(`http://127.0.0.1:8000/scramble?n=${nMoves}`);
         const data = await res.json();
-        currentState = data.state;
+        
+        // Reset 3D (không gán state ngay mà render về gốc trước khi play moves)
+        isScrambled = false; 
+        currentCubeState = null;
+        currentScrambleMoves = [];
+        renderCubeFromState(); 
 
-        // Reset stats
         document.getElementById('stat-len').innerText = "-";
         document.getElementById('stat-node').innerText = "-";
         document.getElementById('stat-time').innerText = "-";
 
         await playMovesSequentially(data.moves, 150, statusText);
+        
+        // Cập nhật "nguồn sự thật" sau khi animate xong
+        currentCubeState = data.state;
+        currentScrambleMoves = data.moves;
+        isScrambled = true;
+
         setUIDisabled(false);
       } catch (err) {
         banner.style.display = 'none';
@@ -497,11 +551,11 @@
     });
 
     btnSolve.addEventListener('click', async () => {
-      if (!currentState) return alert("Vui lòng xáo trộn khối Rubik trước!");
+      if (!isScrambled || !currentCubeState) return alert("Vui lòng xáo trộn khối Rubik trước!");
 
       setUIDisabled(true);
       banner.style.display = 'block';
-      sContainer.style.display = 'block'; // Hiển thị spinner khi chờ server tính
+      sContainer.style.display = 'block';
       pContainer.style.display = 'none';
       statusText.innerText = "AI ĐANG TÍNH TOÁN LỜI GIẢI...";
 
@@ -511,26 +565,32 @@
         const res = await fetch('http://127.0.0.1:8000/solve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ state: currentState, heuristic: heuristic })
+          body: JSON.stringify({ state: currentCubeState, heuristic: heuristic })
         });
         const data = await res.json();
 
         if (data.moves === null) {
           banner.style.display = 'none';
-          alert("Lỗi TIMEOUT: Không gian tìm kiếm quá lớn (vượt quá 300,000 node). Heuristic thô không đủ sức giải!");
+          alert("Lỗi TIMEOUT: Heuristic thô không giải được trong giới hạn, thử heuristic v2 hoặc scramble ít bước hơn.");
+          
+          // Đảm bảo khối không lệch, KHÔNG đổi isScrambled và currentCubeState
+          renderCubeFromState();
+          
           setUIDisabled(false);
           return;
         }
 
-        // Cập nhật bảng
         document.getElementById('stat-len').innerText = data.moves.length + " bước";
         document.getElementById('stat-node').innerText = data.nodes_opened.toLocaleString();
         document.getElementById('stat-time').innerText = data.time_ms + " ms";
 
-        // Trình diễn lời giải (progress bar sẽ tự kích hoạt)
         await playMovesSequentially(data.moves, 350, statusText);
 
-        currentState = null; // Giải xong thì xoá state cũ
+        // Giải xong thành công
+        currentCubeState = null;
+        currentScrambleMoves = [];
+        isScrambled = false;
+
         setUIDisabled(false);
 
       } catch (err) {
