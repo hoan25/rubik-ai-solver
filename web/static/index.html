@@ -332,8 +332,15 @@
 
           mesh.position.set(x * spacing, y * spacing, z * spacing);
 
-          // Lưu thuộc tính toạ độ ảo (logic coord) để dễ xoay
-          mesh.userData = { lx: x, ly: y, lz: z };
+          // Lưu thuộc tính toạ độ ảo (logic coord) và toạ độ ban đầu
+          mesh.userData = { 
+            lx: x, 
+            ly: y, 
+            lz: z,
+            initX: x * spacing,
+            initY: y * spacing,
+            initZ: z * spacing
+          };
 
           scene.add(mesh);
           cubies.push(mesh);
@@ -467,6 +474,7 @@
     }
 
     function renderCubeFromState() {
+      console.log("currentCubeState:", currentCubeState);
       // 1. Luôn Reset về Goal
       cubies.forEach(c => {
         c.position.set(c.userData.initX, c.userData.initY, c.userData.initZ);
@@ -480,6 +488,7 @@
       if (isScrambled && currentScrambleMoves.length > 0) {
         currentScrambleMoves.forEach(m => applyMoveInstant(m));
       }
+      console.log("Rendered", scene.children.length, "objects");
     }
 
     // --- UI TƯƠNG TÁC GỌI API ---
