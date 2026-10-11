@@ -6,7 +6,7 @@ Mô tả:
   sử dụng Lehmer code cho hoán vị (0..40319) và cơ số 3 cho orientation (0..2186).
 - build_corner_pdb: BFS ngược từ GOAL_STATE (chỉ xét phần góc), lưu khoảng cách tối thiểu
   vào mảng array.array('B') có dung lượng ~84.1 MB.
-- Sử dụng module C siêu tốc (fast_pdb.dll) giúp hoàn tất BFS 88.17 triệu trạng thái chỉ trong < 2 giây.
+- Sử dụng module C tối ưu (fast_pdb.dll) giúp hoàn tất BFS 88.17 triệu trạng thái trong khoảng 1–2 phút (~97,5 giây trên 1 core, -O2).
 - Dữ liệu PDB được lưu vĩnh viễn tại `data/pdb_corner.pkl` để dùng lại cho các lần chạy sau.
 - get_heuristic_v2: Lấy max(h_corner_pdb, h_edge_fallback) để đảm bảo tính Admissible.
 """
@@ -174,6 +174,10 @@ def _get_corner_pdb() -> array.array:
     if CORNER_PDB is None:
         CORNER_PDB = load_or_build_corner_pdb()
     return CORNER_PDB
+
+def preload_pdb() -> None:
+    """Nạp Corner PDB vào RAM (gọi 1 lần khi khởi động, trước khi đo thời gian)."""
+    _get_corner_pdb()
 
 
 def get_heuristic_v2(state: State) -> int:

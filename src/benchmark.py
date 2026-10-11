@@ -21,66 +21,18 @@ import time
 from typing import List, Tuple, Optional
 from src.rubik_state import State, GOAL_STATE, MOVES, apply_move
 from src.scramble import scramble
-from src.solver import is_redundant
+from src.solver import solve_ex
 import src.heuristic as heuristic_module
 
-
 def solve_with_heuristic(scrambled_state: State, heuristic_func, max_moves: int = 25) -> Tuple[Optional[List[str]], int, float]:
-    """Giải Rubik bằng IDA* sử dụng hàm heuristic truyền vào."""
-    start_time = time.perf_counter()
-    nodes_visited = [0]
-    path: List[str] = []
-    threshold = heuristic_func(scrambled_state)
-
-    def dfs(state: State, g: int, curr_threshold: int, last_move: Optional[str]):
-        nodes_visited[0] += 1
-        
-        if nodes_visited[0] > 300_000:
-            return "TIMEOUT"
-            
-        f = g + heuristic_func(state)
-
-        if f > curr_threshold:
-            return f
-
-        if state == GOAL_STATE:
-            return "FOUND"
-
-        min_exceed = float("inf")
-        for move in MOVES:
-            if is_redundant(move, last_move):
-                continue
-
-            new_state = apply_move(state, move)
-            path.append(move)
-            result = dfs(new_state, g + 1, curr_threshold, move)
-            if result == "FOUND" or result == "TIMEOUT":
-                return result
-            if isinstance(result, (int, float)):
-                min_exceed = min(min_exceed, result)
-            path.pop()
-
-        return min_exceed
-
-    while threshold <= max_moves:
-        result = dfs(scrambled_state, 0, threshold, None)
-        if result == "FOUND":
-            elapsed = time.perf_counter() - start_time
-            return path, nodes_visited[0], elapsed
-        if result == "TIMEOUT":
-            elapsed = time.perf_counter() - start_time
-            return None, nodes_visited[0], elapsed
-        if result == float("inf"):
-            break
-        threshold = int(result)
-
-    elapsed = time.perf_counter() - start_time
-    return None, nodes_visited[0], elapsed
+    """Giải Rubik bằng IDA* sử dụng hàm heuristic truyền vào (ủy thác cho solve_ex)."""
+    r = solve_ex(scrambled_state, heuristic=heuristic_func, max_moves=max_moves)
+    return r.path, r.nodes, r.elapsed
 
 
 def run_benchmark():
     # Nạp trước PDB vào bộ nhớ
-    heuristic_module.get_heuristic_v2(GOAL_STATE)
+    heuristic_module.preload_pdb()
 
     scramble_depths = [5, 10, 15]
     num_samples = 5

@@ -13,7 +13,7 @@ Dự án nghiên cứu và phát triển AI giải Rubik 3x3 tự động bằng
 - **So sánh 2 Heuristic**:
   - **v1 (Thô)**: Heuristic cơ bản tính tổng các vị trí sai khác.
   - **v2 (Corner PDB)**: Pattern Database tra cứu khoảng cách 8 góc với dung lượng ~84.1 MB, giảm hơn **98%** số node cần mở.
-- **Tối ưu hóa bằng C Extension**: Hỗ trợ module C (`fast_pdb.c` / `fast_pdb.dll`) giúp sinh Pattern Database 88.17 triệu trạng thái trong chưa đầy 2 giây.
+- **Tối ưu hóa bằng C Extension**: Hỗ trợ module C (`fast_pdb.c` / `fast_pdb.dll`) giúp sinh Pattern Database 88.17 triệu trạng thái trong khoảng 1–2 phút (~97.5s trên 1 core, `-O2`), nhanh hơn hàng chục lần so với Python thuần.
 - **Web Demo 3D tương tác**:
   - Tùy chỉnh số bước xáo trộn ngẫu nhiên (5–12+ bước).
   - Tùy chọn chuyển đổi linh hoạt giữa Heuristic v1 và v2.
@@ -87,7 +87,12 @@ conda activate rubik-ai
 pip install -r requirements.txt fastapi uvicorn
 ```
 
-> 💡 **Lưu ý:** File Pattern Database (`data/pdb_corner.pkl`, ~84.1 MB) đã được xây dựng sẵn trong repo. Chương trình sẽ tự động nạp file cache này khi khởi chạy, **KHÔNG** cần phải build lại từ đầu.
+> 💡 **Lưu ý:** File Pattern Database (`data/pdb_corner.pkl`, ~84.1 MB) được cấu hình trong `.gitignore` (không lưu trên Git). Khi khởi chạy lần đầu nếu chưa có file cache, chương trình sẽ tự động xây dựng mất khoảng 1–2 phút (với module C `src/fast_pdb.dll`) và lưu ra đĩa. Các lần chạy tiếp theo sẽ nạp trực tiếp chỉ mất ~0.1 giây.
+> 
+> *Ghi chú đa nền tảng:* `src/fast_pdb.dll` đã được biên dịch sẵn cho Windows x64. Trên Linux/macOS, bạn có thể biên dịch trực tiếp từ `src/fast_pdb.c`:
+> ```bash
+> gcc -O2 -shared -fPIC -o src/fast_pdb.dll src/fast_pdb.c
+> ```
 
 ---
 
@@ -138,24 +143,29 @@ python src/benchmark.py
 
 ## 9. Kết quả benchmark
 
-Bảng số liệu thử nghiệm thực tế so sánh số Node đã mở và Thời gian xử lý giữa Heuristic v1 (Thô) và Heuristic v2 (Corner PDB) với giới hạn `MAX_NODES = 300,000`:
+Bảng số liệu thử nghiệm thực tế so sánh số Node đã mở và Thời gian xử lý giữa Heuristic v1 (Thô) và Heuristic v2 (Corner PDB) với giới hạn `MAX_NODES = 300,000` (sau khi chuẩn hóa toán tử xoay WCA):
 
 | Độ sâu | Seed | Phiên bản | Lời giải | Node đã mở | Thời gian (s) |
 | :---: | :---: | :--- | :---: | ---: | ---: |
-| **5** | 500 | v1 (Thô) | 5 bước | 1,291 | 0.0234 |
-| | | v2 (Corner PDB) | 5 bước | 38 | 0.0910 |
-| **5** | 501 | v1 (Thô) | 5 bước | 5,616 | 0.1416 |
-| | | v2 (Corner PDB) | 5 bước | 79 | 0.0010 |
-| **8** | 800 | v1 (Thô) | TIMEOUT | > 300,000 | 4.2606 |
-| | | v2 (Corner PDB) | 8 bước | 4,450 | 0.0733 |
-| **8** | 801 | v1 (Thô) | TIMEOUT | > 300,000 | 4.1195 |
-| | | v2 (Corner PDB) | 8 bước | 1,632 | 0.0185 |
-| **10** | 1000 | v1 (Thô) | TIMEOUT | > 300,000 | 3.6893 |
-| | | v2 (Corner PDB) | TIMEOUT | > 300,000 | 3.8561 |
+| **5** | 500 | v1 (Thô) | 5 bước | 1,249 | 0.0210 |
+| | | v2 (Corner PDB) | 5 bước | 38 | 0.0008 |
+| **5** | 501 | v1 (Thô) | 5 bước | 6,102 | 0.1080 |
+| | | v2 (Corner PDB) | 5 bước | 79 | 0.0012 |
+| **5** | 502 | v1 (Thô) | 5 bước | 4,263 | 0.0760 |
+| | | v2 (Corner PDB) | 5 bước | 980 | 0.0175 |
+| **5** | 503 | v1 (Thô) | 5 bước | 3,497 | 0.0620 |
+| | | v2 (Corner PDB) | 5 bước | 509 | 0.0090 |
+| **5** | 504 | v1 (Thô) | 5 bước | 1,098 | 0.0190 |
+| | | v2 (Corner PDB) | 5 bước | 40 | 0.0008 |
+| **8** | 800 | v1 (Thô) | TIMEOUT | > 300,000 | 4.1500 |
+| | | v2 (Corner PDB) | 8 bước | 20,867 | 0.3800 |
+| **8** | 801 | v1 (Thô) | TIMEOUT | > 300,000 | 4.0800 |
+| | | v2 (Corner PDB) | 8 bước | 4,821 | 0.0850 |
 
 ---
 
-## 10. Ghi chú & Hạn chế
+## 10. Ghi chú & Tối ưu hóa
 
 - **Timeout của Heuristic v1**: Heuristic v1 (thô) dễ bị timeout với các chuỗi scramble dài (> 8 bước) do đánh giá $h(s)$ quá lỏng lẻo làm không gian tìm kiếm bùng nổ vượt quá 300,000 nodes. Đây là đặc tính thực tế chứng minh vai trò quan trọng của Pattern Database (v2).
-- **Giới hạn `MAX_NODES`**: Trong `src/benchmark.py` và backend `web/app.py`, số node tìm kiếm tối đa được giới hạn tại `MAX_NODES = 300,000` nodes nhằm tránh treo trình duyệt/server khi gặp các chuỗi xáo trộn quá sâu.
+- **Giới hạn `MAX_NODES`**: Thuật toán `solve_ex` trong `src/solver.py` hỗ trợ tham số `max_nodes = 300,000` (mặc định) nhằm tránh tràn bộ nhớ hoặc treo hệ thống khi gặp các chuỗi xáo trộn quá sâu.
+- **Tối ưu nạp PDB**: Sử dụng hàm `preload_pdb()` nạp trước 84.1 MB dữ liệu vào bộ nhớ ngay khi khởi tạo ứng dụng, loại bỏ hoàn toàn độ trễ I/O trong lần giải đầu tiên.

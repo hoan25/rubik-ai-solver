@@ -35,12 +35,13 @@
       height: 100%;
     }
 
-    /* Glassmorphism UI */
     #control-panel {
       position: absolute;
       bottom: 40px;
       right: 40px;
       width: 340px;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
       background: var(--panel-bg);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
@@ -180,6 +181,16 @@
         transform: rotate(360deg);
       }
     }
+    #player { display: none; flex-direction: column; gap: 10px; }
+    .pl-head { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
+    .pl-buttons { display: flex; gap: 6px; }
+    .pl-buttons .btn { flex: 1; padding: 10px 0; }
+    #pl-slider { width: 100%; }
+    #pl-chips { display: flex; flex-wrap: wrap; gap: 4px; max-height: 84px; overflow-y: auto; }
+    .chip { font: 600 12px 'Inter', sans-serif; color: var(--text); background: rgba(255,255,255,.08);
+            border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; cursor: pointer; }
+    .chip.done { background: rgba(59,130,246,.35); }
+    .chip.current { outline: 2px solid #fbbf24; }
   </style>
 </head>
 
@@ -226,10 +237,37 @@
 
     <button class="btn btn-primary" id="btn-solve">✨ Giải Rubik</button>
 
+    <div id="error-banner" style="display:none; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 12px; padding: 12px; font-size: 13px; line-height: 1.5; color: #fca5a5;">
+      <div style="font-weight: 700; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; color: #f87171;">
+        <span>⚠️</span> <span id="error-title">TIMEOUT</span>
+      </div>
+      <div id="error-msg">Heuristic thô không giải được trong 300 000 nút.</div>
+    </div>
+
     <div class="stats">
       <div class="stat-row"><span>Độ dài:</span> <span class="stat-val" id="stat-len">-</span></div>
       <div class="stat-row"><span>Node mở:</span> <span class="stat-val" id="stat-node">-</span></div>
       <div class="stat-row"><span>Thời gian:</span> <span class="stat-val" id="stat-time">-</span></div>
+      <div class="stat-row"><span>Xác minh:</span> <span class="stat-val" id="stat-verify">-</span></div>
+    </div>
+
+    <div id="player">
+      <div class="pl-head"><span id="pl-label">Bước 0/0</span><span id="pl-move"></span></div>
+      <input type="range" id="pl-slider" min="0" max="0" value="0">
+      <div class="pl-buttons">
+        <button class="btn" id="pl-first" title="Về đầu (Home)">⏮</button>
+        <button class="btn" id="pl-prev"  title="Lùi 1 bước (←)">◀</button>
+        <button class="btn btn-primary" id="pl-play" title="Phát / Tạm dừng (Space)">▶</button>
+        <button class="btn" id="pl-next"  title="Tiến 1 bước (→)">▶</button>
+        <button class="btn" id="pl-last"  title="Về cuối (End)">⏭</button>
+      </div>
+      <select id="pl-speed">
+        <option value="700">Tốc độ 0,5×</option>
+        <option value="350" selected>Tốc độ 1×</option>
+        <option value="175">Tốc độ 2×</option>
+        <option value="80">Tốc độ 4×</option>
+      </select>
+      <div id="pl-chips"></div>
     </div>
   </div>
 
@@ -245,6 +283,7 @@
   <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { createPlayer } from '/static/player.js';
 
     // --- BẢN ĐỒ MÀU VÀ TOẠ ĐỘ ---
     const COLORS = {
@@ -309,7 +348,7 @@
     const geometry = new THREE.BoxGeometry(1, 1, 1);
 
     function createMaterial(color) {
-      return new THREE.MeshPhongMaterial({ color: color, shininess: 60, rounded: true });
+      return new THREE.MeshPhongMaterial({ color: color, shininess: 60 });
     }
 
     for (let x = -1; x <= 1; x++) {
@@ -348,7 +387,22 @@
       }
     }
 
-    console.log("Cube added:", scene.children.length);
+    // Thứ tự trùng thứ tự vật liệu: 0:x+ 1:x- 2:y+ 3:y- 4:z+ 5:z-
+    const FACE_NORMALS = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+    function isCubeSolved() {
+      const v = new THREE.Vector3(), home = new THREE.Vector3(), nrm = new THREE.Vector3();
+      return cubies.every(c => {
+        home.set(c.userData.initX, c.userData.initY, c.userData.initZ);
+        if (c.position.distanceTo(home) > 1e-3) return false;
+        return FACE_NORMALS.every((n, i) => {
+          if (c.material[i].color.getHex() === COLORS.I) return true;   // mặt trong, bỏ qua
+          nrm.set(n[0], n[1], n[2]);
+          v.copy(nrm).applyQuaternion(c.quaternion);
+          return v.distanceTo(nrm) < 1e-3;                              // mặt màu phải quay về hướng ban đầu
+        });
+      });
+    }
+    window.__isCubeSolved = isCubeSolved;   // tiện kiểm tra trong DevTools
 
     // --- LOGIC ANIMATION XOAY MẶT ---
 
@@ -447,6 +501,7 @@
     let currentCubeState = null; // Trạng thái logic từ backend
     let currentScrambleMoves = []; // Các bước để render tức thì
     let isScrambled = false;
+    let phase = 'idle';   // 'idle' | 'scrambled' | 'solving' | 'review'
 
     function applyMoveInstant(moveStr) {
       const cfg = MOVE_MAP[moveStr];
@@ -474,7 +529,6 @@
     }
 
     function renderCubeFromState() {
-      console.log("currentCubeState:", currentCubeState);
       // 1. Luôn Reset về Goal
       cubies.forEach(c => {
         c.position.set(c.userData.initX, c.userData.initY, c.userData.initZ);
@@ -488,10 +542,9 @@
       if (isScrambled && currentScrambleMoves.length > 0) {
         currentScrambleMoves.forEach(m => applyMoveInstant(m));
       }
-      console.log("Rendered", scene.children.length, "objects");
     }
 
-    // --- UI TƯƠNG TÁC GỌI API ---
+    // --- UI TƯƠNG TÁC GỌI API & PLAYER ---
     const btnScramble = document.getElementById('btn-scramble');
     const btnSolve = document.getElementById('btn-solve');
     const banner = document.getElementById('status-banner');
@@ -502,17 +555,101 @@
     const inpScrambleMoves = document.getElementById('inp-scramble-moves');
     const warnHeuristic = document.getElementById('warn-heuristic');
 
-    inpScrambleMoves.value = Math.floor(Math.random() * 8) + 5;
+    const plBox = document.getElementById('player');
+    const plLabel = document.getElementById('pl-label'), plMove = document.getElementById('pl-move');
+    const plSlider = document.getElementById('pl-slider'), plChips = document.getElementById('pl-chips');
+    const plFirst = document.getElementById('pl-first'), plPrev = document.getElementById('pl-prev');
+    const plPlay = document.getElementById('pl-play'), plNext = document.getElementById('pl-next');
+    const plLast = document.getElementById('pl-last'), plSpeed = document.getElementById('pl-speed');
+    const statVerify = document.getElementById('stat-verify');
+    const statLen = document.getElementById('stat-len');
+    const statNode = document.getElementById('stat-node');
+    const statTime = document.getElementById('stat-time');
+    const errorBanner = document.getElementById('error-banner');
+    const errorTitle = document.getElementById('error-title');
+    const errorMsg = document.getElementById('error-msg');
+
+    // Mặc định 5..8 bước hợp lý
+    inpScrambleMoves.value = Math.floor(Math.random() * 4) + 5;
 
     function checkWarning() {
-      const isV1 = selHeuristic.value === 'v1';
-      const isLong = parseInt(inpScrambleMoves.value) > 8;
-      warnHeuristic.style.display = (isV1 && isLong) ? 'block' : 'none';
+      const n = parseInt(inpScrambleMoves.value) || 0;
+      const v = selHeuristic.value;
+      let msg = '';
+      if (v === 'v1' && n > 8)  msg = '⚠️ Heuristic thô thường timeout với scramble > 8 bước. Hãy thử v2 hoặc giảm số bước.';
+      if (v === 'v2' && n > 9)  msg = '⚠️ Từ ~10 bước, ngay cả v2 (Corner PDB) có thể timeout (đo được: 4/5 ca 10 bước giải được).';
+      warnHeuristic.textContent = msg;
+      warnHeuristic.style.display = msg ? 'block' : 'none';
     }
     
     selHeuristic.addEventListener('change', checkWarning);
     inpScrambleMoves.addEventListener('input', checkWarning);
     checkWarning();
+
+    function failMessage(status, heuristic) {
+      if (status !== 'TIMEOUT') return 'Không tìm thấy lời giải trong giới hạn độ sâu.';
+      return heuristic === 'v1'
+        ? 'TIMEOUT: heuristic thô không giải được trong 300 000 nút. Thử v2 hoặc giảm số bước xáo.'
+        : 'TIMEOUT: ngay cả Corner PDB cũng vượt 300 000 nút với ca này (scramble quá sâu). Giảm số bước xáo.';
+    }
+
+    let chipsFor = null;
+    function buildChips(moves) {
+      plChips.innerHTML = '';
+      moves.forEach((m, i) => {
+        const b = document.createElement('button');
+        b.className = 'chip'; b.textContent = m; b.title = `Xem khối sau bước ${i + 1}`;
+        b.addEventListener('click', () => player.seek(i + 1));
+        plChips.appendChild(b);
+      });
+    }
+
+    function renderPlayerUI(s) {
+      if (chipsFor !== s.moves) { chipsFor = s.moves; buildChips(s.moves); }
+      plLabel.textContent = `Bước ${s.index}/${s.total}`;
+      plMove.textContent = s.last ? `Vừa xoay: ${s.last}` : 'Trạng thái xáo trộn';
+      plSlider.max = s.total; plSlider.value = s.index;
+      plPlay.textContent = s.mode === 'playing' ? '⏸' : '▶';
+      plFirst.disabled = plPrev.disabled = s.busy || s.index === 0;
+      plNext.disabled = plLast.disabled = s.busy || s.index === s.total;
+      [...plChips.children].forEach((c, i) => {
+        c.classList.toggle('done', i < s.index);
+        c.classList.toggle('current', i === s.index - 1);
+      });
+      if (phase === 'review') btnScramble.disabled = s.busy || s.mode === 'playing';
+      statVerify.textContent = (s.total > 0 && s.index === s.total && !s.busy)
+        ? (isCubeSolved() ? '✔ 6 mặt đồng màu' : '✖ chưa về đích') : '-';
+    }
+
+    const player = createPlayer({
+      animate: (m, ms) => animateMoveAsync(m, ms),
+      applyInstant: (m) => applyMoveInstant(m),
+      onChange: renderPlayerUI,
+    });
+
+    async function togglePlay() {
+      const s = player.state;
+      if (s.mode === 'playing') return player.pause();
+      if (s.index === s.total) await player.seek(0);      // ở cuối: phát lại từ đầu
+      player.play();
+    }
+    plPlay.onclick = togglePlay;
+    plFirst.onclick = () => player.seek(0);
+    plLast.onclick  = () => player.seek(player.state.total);
+    plPrev.onclick  = () => player.stepBack();
+    plNext.onclick  = () => player.stepForward();
+    plSlider.oninput = () => player.seek(parseInt(plSlider.value));
+    plSpeed.onchange = () => player.setSpeed(parseInt(plSpeed.value));
+
+    document.addEventListener('keydown', (e) => {
+      if (phase !== 'review') return;
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT') return;
+      if (e.key === ' ' && tag === 'BUTTON') return;      // nút tự xử lý Space
+      const act = { ' ': togglePlay, ArrowRight: () => player.stepForward(), ArrowLeft: () => player.stepBack(),
+                    Home: () => player.seek(0), End: () => player.seek(player.state.total) }[e.key];
+      if (act) { e.preventDefault(); act(); }
+    });
 
     function setUIDisabled(disabled) {
       btnScramble.disabled = disabled;
@@ -523,6 +660,14 @@
 
     btnScramble.addEventListener('click', async () => {
       setUIDisabled(true);
+      player.reset();
+      plBox.style.display = 'none';
+      if (errorBanner) errorBanner.style.display = 'none';
+      statLen.innerText = "-";
+      statLen.style.color = "#fff";
+      statNode.innerText = "-";
+      statTime.innerText = "-";
+      statVerify.innerText = '-';
 
       banner.style.display = 'block';
       sContainer.style.display = 'block';
@@ -531,80 +676,98 @@
 
       try {
         const nMoves = parseInt(inpScrambleMoves.value) || 10;
-        const res = await fetch(`http://127.0.0.1:8000/scramble?n=${nMoves}`);
+        const res = await fetch(`/scramble?n=${nMoves}`);
         const data = await res.json();
         
-        // Reset 3D (không gán state ngay mà render về gốc trước khi play moves)
+        // Reset 3D
         isScrambled = false; 
         currentCubeState = null;
         currentScrambleMoves = [];
         renderCubeFromState(); 
 
-        document.getElementById('stat-len').innerText = "-";
-        document.getElementById('stat-node').innerText = "-";
-        document.getElementById('stat-time').innerText = "-";
-
         await playMovesSequentially(data.moves, 150, statusText);
         
-        // Cập nhật "nguồn sự thật" sau khi animate xong
+        // Cập nhật sau khi animate xong
         currentCubeState = data.state;
         currentScrambleMoves = data.moves;
         isScrambled = true;
+        phase = 'scrambled';
 
         setUIDisabled(false);
       } catch (err) {
         banner.style.display = 'none';
-        alert("Lỗi gọi API Scramble! " + err);
+        if (errorBanner) {
+          errorBanner.style.display = 'block';
+          errorTitle.innerText = "LỖI KẾT NỐI API!";
+          errorMsg.innerText = String(err);
+        }
         setUIDisabled(false);
       }
     });
 
     btnSolve.addEventListener('click', async () => {
-      if (!isScrambled || !currentCubeState) return alert("Vui lòng xáo trộn khối Rubik trước!");
-
+      if (phase !== 'scrambled' || !currentCubeState) return alert("Vui lòng xáo trộn khối Rubik trước!");
+      phase = 'solving';
       setUIDisabled(true);
+      if (errorBanner) errorBanner.style.display = 'none';
       banner.style.display = 'block';
       sContainer.style.display = 'block';
       pContainer.style.display = 'none';
       statusText.innerText = "AI ĐANG TÍNH TOÁN LỜI GIẢI...";
-
       const heuristic = selHeuristic.value;
 
       try {
-        const res = await fetch('http://127.0.0.1:8000/solve', {
+        const res = await fetch('/solve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ state: currentCubeState, heuristic: heuristic })
+          body: JSON.stringify({ state: currentCubeState, heuristic })   // chỉ gửi TRẠNG THÁI
         });
         const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        banner.style.display = 'none';
 
         if (data.moves === null) {
-          banner.style.display = 'none';
-          alert("Lỗi TIMEOUT: Heuristic thô không giải được trong giới hạn, thử heuristic v2 hoặc scramble ít bước hơn.");
-          
-          // Đảm bảo khối không lệch, KHÔNG đổi isScrambled và currentCubeState
+          // 1. Cập nhật bảng thống kê đầy đủ thông số thực tế
+          statLen.innerText = data.status === 'TIMEOUT' ? "TIMEOUT" : "KHÔNG CÓ LỜI GIẢI";
+          statLen.style.color = "#f87171"; // đỏ cam cảnh báo
+          statNode.innerText = data.nodes_opened ? data.nodes_opened.toLocaleString() : "> 300,000";
+          statTime.innerText = data.time_ms ? (data.time_ms + " ms") : "-";
+          statVerify.innerText = "Chưa giải được";
+
+          // 2. Hiển thị Banner Lỗi Trực Quan ngay tại giao diện điều khiển
+          if (errorBanner) {
+            errorBanner.style.display = 'block';
+            errorTitle.innerText = data.status === 'TIMEOUT' ? "TIMEOUT ĐÃ XẢY RA!" : "KHÔNG TÌM THẤY LỜI GIẢI!";
+            errorMsg.innerText = failMessage(data.status, heuristic);
+          }
+
+          // 3. Khôi phục lại trạng thái khối 3D ban đầu
           renderCubeFromState();
-          
+          phase = 'scrambled';
           setUIDisabled(false);
           return;
         }
 
-        document.getElementById('stat-len').innerText = data.moves.length + " bước";
-        document.getElementById('stat-node').innerText = data.nodes_opened.toLocaleString();
-        document.getElementById('stat-time').innerText = data.time_ms + " ms";
+        statLen.style.color = "#fff";
+        statLen.innerText = data.moves.length + " bước";
+        statNode.innerText = data.nodes_opened.toLocaleString();
+        statTime.innerText = data.time_ms + " ms";
 
-        await playMovesSequentially(data.moves, 350, statusText);
-
-        // Giải xong thành công
-        currentCubeState = null;
-        currentScrambleMoves = [];
-        isScrambled = false;
-
+        plBox.style.display = 'flex';
+        player.load(data.moves);                       // giữ lại lời giải để dừng/tua
+        phase = 'review';
         setUIDisabled(false);
+        btnSolve.disabled = true;                      // đã giải; muốn thử lại hãy Xáo trộn
+        player.play();                                 // tự phát; bấm ⏸ để dừng
 
       } catch (err) {
         banner.style.display = 'none';
-        alert("Lỗi gọi API Solve! " + err);
+        if (errorBanner) {
+          errorBanner.style.display = 'block';
+          errorTitle.innerText = "LỖI KẾT NỐI API!";
+          errorMsg.innerText = String(err);
+        }
+        phase = 'scrambled';
         setUIDisabled(false);
       }
     });

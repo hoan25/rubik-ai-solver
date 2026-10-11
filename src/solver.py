@@ -3,16 +3,16 @@ solver.py - Thuật toán IDA* Search giải Rubik 3x3.
 """
 
 import time
-from typing import List, Tuple, Optional
+from typing import Callable, List, NamedTuple, Optional, Tuple
 from src.rubik_state import State, GOAL_STATE, MOVES, apply_move
 from src.heuristic import get_heuristic
 
-# Quy ước mặt đối diện song song để ép thứ tự cố định (tránh trạng thái trùng lặp do giao hoán)
-# U (0) - D (1), R (2) - L (3), F (4) - B (5)
+# Cặp mặt đối diện giao hoán (U/D, R/L, F/B). Chỉ cho phép MỘT thứ tự:
+# cấm D ngay sau U, cấm L ngay sau R, cấm B ngay sau F (cho phép "D U", cấm "U D").
 _OPPOSITE_FIXED_ORDER = {
-    "D": "U",  # Nếu last_move là D, không cho phép U
-    "L": "R",  # Nếu last_move là L, không cho phép R
-    "B": "F",  # Nếu last_move là B, không cho phép F
+    "D": "U",  # Nếu last_move là U, cấm D
+    "L": "R",  # Nếu last_move là R, cấm L
+    "B": "F",  # Nếu last_move là F, cấm B
 }
 
 def is_redundant(move: str, last_move: Optional[str]) -> bool:
@@ -38,51 +38,67 @@ def is_redundant(move: str, last_move: Optional[str]) -> bool:
 
     return False
 
-def solve(scrambled_state: State, max_moves: int = 25) -> Tuple[Optional[List[str]], int, float]:
-    """
-    Giải Rubik từ trạng thái scrambled_state bằng thuật toán IDA*.
-    Trả về: (solution_path, nodes_visited, elapsed_time_seconds).
-    """
-    start_time = time.perf_counter()
-    nodes_visited = [0]  # Counter mutable trong hàm đệ quy
+MAX_NODES_DEFAULT = 300_000
 
-    threshold = get_heuristic(scrambled_state)
+class SolveResult(NamedTuple):
+    path: Optional[List[str]]   # None nếu không có lời giải
+    nodes: int                  # số lần gọi dfs, cộng dồn mọi vòng ngưỡng
+    elapsed: float              # giây
+    status: str                 # "OK" | "TIMEOUT" | "NO_SOLUTION"
+
+class _NodeLimit(Exception):
+    pass
+
+def solve_ex(scrambled_state: State,
+             heuristic: Callable[[State], int] = get_heuristic,
+             max_moves: int = 25,
+             max_nodes: int = MAX_NODES_DEFAULT) -> SolveResult:
+    """
+    IDA*. 'node' = một lần gọi dfs (tính cả nút bị cắt ngay vì f > ngưỡng),
+    cộng dồn qua tất cả các vòng ngưỡng.
+    """
+    start = time.perf_counter()
+    nodes = 0
     path: List[str] = []
 
-    def dfs(state: State, g: int, curr_threshold: int, last_move: Optional[str]):
-        nodes_visited[0] += 1
-        f = g + get_heuristic(state)
-
-        if f > curr_threshold:
+    def dfs(state: State, g: int, threshold: int, last: Optional[str]):
+        nonlocal nodes
+        nodes += 1
+        if nodes > max_nodes:
+            raise _NodeLimit
+        f = g + heuristic(state)
+        if f > threshold:
             return f
-
         if state == GOAL_STATE:
             return "FOUND"
-
-        min_exceed = float("inf")
+        best = float("inf")
         for move in MOVES:
-            if is_redundant(move, last_move):
+            if is_redundant(move, last):
                 continue
-
-            new_state = apply_move(state, move)
             path.append(move)
-            result = dfs(new_state, g + 1, curr_threshold, move)
-            if result == "FOUND":
+            r = dfs(apply_move(state, move), g + 1, threshold, move)
+            if r == "FOUND":
                 return "FOUND"
-            if isinstance(result, (int, float)):
-                min_exceed = min(min_exceed, result)
+            best = min(best, r)
             path.pop()
+        return best
 
-        return min_exceed
+    threshold = heuristic(scrambled_state)
+    try:
+        while threshold <= max_moves:
+            r = dfs(scrambled_state, 0, threshold, None)
+            if r == "FOUND":
+                return SolveResult(list(path), nodes, time.perf_counter() - start, "OK")
+            if r == float("inf"):
+                break
+            threshold = int(r)
+    except _NodeLimit:
+        return SolveResult(None, nodes, time.perf_counter() - start, "TIMEOUT")
+    return SolveResult(None, nodes, time.perf_counter() - start, "NO_SOLUTION")
 
-    while threshold <= max_moves:
-        result = dfs(scrambled_state, 0, threshold, None)
-        if result == "FOUND":
-            elapsed = time.perf_counter() - start_time
-            return path, nodes_visited[0], elapsed
-        if result == float("inf"):
-            break
-        threshold = int(result)
+def solve(scrambled_state: State, max_moves: int = 25,
+          max_nodes: int = MAX_NODES_DEFAULT) -> Tuple[Optional[List[str]], int, float]:
+    """Giữ nguyên chữ ký cũ (path, nodes, elapsed) để không vỡ code gọi hiện có."""
+    r = solve_ex(scrambled_state, max_moves=max_moves, max_nodes=max_nodes)
+    return r.path, r.nodes, r.elapsed
 
-    elapsed = time.perf_counter() - start_time
-    return None, nodes_visited[0], elapsed

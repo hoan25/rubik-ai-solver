@@ -12,8 +12,7 @@ def scramble(n_moves: int, seed: int | None = None) -> Tuple[State, List[str]]:
     Sinh trạng thái xáo trộn hợp lệ n_moves bước bằng cách xoay liên tiếp.
     Trả về: (scrambled_state, moves_used).
     """
-    if seed is not None:
-        random.seed(seed)
+    rng = random.Random(seed)
 
     state = GOAL_STATE
     moves_used: List[str] = []
@@ -21,7 +20,7 @@ def scramble(n_moves: int, seed: int | None = None) -> Tuple[State, List[str]]:
 
     for _ in range(n_moves):
         valid_choices = [m for m in MOVES if not is_redundant(m, last_move)]
-        move = random.choice(valid_choices)
+        move = rng.choice(valid_choices)
         state = apply_move(state, move)
         moves_used.append(move)
         last_move = move
