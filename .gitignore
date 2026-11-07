@@ -21,3 +21,28 @@ data/*.pkl
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Local credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+
+# Local reports, plans, illustrations and generated results
+/docs/
+/figures/
+/scripts/
+/tools/
+/GIAI_THICH_LOGIC_VA_MA_NGUON.md
+*.pdf
+*.doc
+*.docx
+*.zip
+*.log
+*.aux
+*.toc
+*.xdv
+*benchmark*results*
+benchmark_report.md
+bao_cao_*.md
+**/ke_hoach_*.md
+/scramble_resp.json
